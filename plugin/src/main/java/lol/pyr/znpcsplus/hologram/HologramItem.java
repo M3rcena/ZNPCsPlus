@@ -11,14 +11,17 @@ import com.github.retrooper.packetevents.protocol.nbt.codec.NBTCodec;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
+import io.github.retrooper.packetevents.util.SpigotConversionUtil;
 import lol.pyr.znpcsplus.api.entity.EntityProperty;
 import lol.pyr.znpcsplus.entity.EntityPropertyRegistryImpl;
 import lol.pyr.znpcsplus.packets.PacketFactory;
+import lol.pyr.znpcsplus.util.ItemsAdderIntegration;
 import lol.pyr.znpcsplus.util.NpcLocation;
 import lol.pyr.znpcsplus.util.Viewable;
 
 public class HologramItem extends HologramLine<ItemStack> {
-    public HologramItem(Viewable viewable,  EntityPropertyRegistryImpl propertyRegistry, PacketFactory packetFactory, NpcLocation location, ItemStack item) {
+    public HologramItem(Viewable viewable, EntityPropertyRegistryImpl propertyRegistry, PacketFactory packetFactory,
+            NpcLocation location, ItemStack item) {
         super(viewable, item, packetFactory, EntityTypes.ITEM, location);
         addProperty(propertyRegistry.getByName("holo_item"));
     }
@@ -26,7 +29,8 @@ public class HologramItem extends HologramLine<ItemStack> {
     @SuppressWarnings("unchecked")
     @Override
     public <T> T getProperty(EntityProperty<T> key) {
-        if (key.getName().equalsIgnoreCase("holo_item")) return (T) getValue();
+        if (key.getName().equalsIgnoreCase("holo_item"))
+            return (T) getValue();
         return super.getProperty(key);
     }
 
@@ -38,6 +42,11 @@ public class HologramItem extends HologramLine<ItemStack> {
     public static boolean ensureValidItemInput(String in) {
         if (in == null || in.isEmpty()) {
             return false;
+        }
+
+        // Check if it's an Items Adder item ID
+        if (ItemsAdderIntegration.isItemsAdderItemId(in)) {
+            return ItemsAdderIntegration.isLoaded() && ItemsAdderIntegration.getItemsAdderItem(in) != null;
         }
 
         int indexOfNbt = in.indexOf("{");
@@ -71,6 +80,15 @@ public class HologramItem extends HologramLine<ItemStack> {
     }
 
     public static ItemStack deserialize(String serializedItem) {
+        // Check if it's an Items Adder item ID first
+        if (ItemsAdderIntegration.isItemsAdderItemId(serializedItem)) {
+            org.bukkit.inventory.ItemStack bukkitStack = ItemsAdderIntegration.getItemsAdderItem(serializedItem);
+            if (bukkitStack != null) {
+                return SpigotConversionUtil.fromBukkitItemStack(bukkitStack);
+            }
+            // If Items Adder item not found, fall through to regular item parsing
+        }
+
         int indexOfNbt = serializedItem.indexOf("{");
         String typeName = serializedItem;
         int amount = 1;
@@ -89,21 +107,37 @@ public class HologramItem extends HologramLine<ItemStack> {
                 if (nbtAmount != null) {
                     nbt.removeTag("Count");
                     amount = nbtAmount.getAsInt();
-                    if (amount <= 0) amount = 1;
-                    if (amount > 127) amount = 127;
+                    if (amount <= 0)
+                        amount = 1;
+                    if (amount > 127)
+                        amount = 127;
                 }
             }
         }
         ItemType type = ItemTypes.getByName("minecraft:" + typeName.toLowerCase());
-        if (type == null) type = ItemTypes.STONE;
+        if (type == null)
+            type = ItemTypes.STONE;
         return ItemStack.builder().type(type).amount(amount).nbt(nbt).build();
     }
 
     public String serialize() {
+        // Check if this is an Items Adder item
+        org.bukkit.inventory.ItemStack bukkitStack = SpigotConversionUtil.toBukkitItemStack(getValue());
+        String itemsAdderId = ItemsAdderIntegration.getItemsAdderItemId(bukkitStack);
+        if (itemsAdderId != null) {
+            // Serialize as Items Adder item ID
+            return "item:" + itemsAdderId;
+        }
+
+        // Regular item serialization
         NBTCompound nbt = getValue().getNBT();
-        if (nbt == null) nbt = new NBTCompound();
-        if (getValue().getAmount() > 1) nbt.setTag("Count", new NBTInt(getValue().getAmount()));
-        if (nbt.isEmpty()) return "item:" + getValue().getType().getName().toString().replace("minecraft:", "");
-        return "item:" + getValue().getType().getName().toString().replace("minecraft:", "") + NBTCodec.nbtToJson(nbt, true);
+        if (nbt == null)
+            nbt = new NBTCompound();
+        if (getValue().getAmount() > 1)
+            nbt.setTag("Count", new NBTInt(getValue().getAmount()));
+        if (nbt.isEmpty())
+            return "item:" + getValue().getType().getName().toString().replace("minecraft:", "");
+        return "item:" + getValue().getType().getName().toString().replace("minecraft:", "")
+                + NBTCodec.nbtToJson(nbt, true);
     }
 }

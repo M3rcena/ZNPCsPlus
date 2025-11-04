@@ -17,6 +17,7 @@ processResources {
 
 dependencies {
     compileOnly "me.clip:placeholderapi:2.11.6" // Placeholder support
+    compileOnly "dev.lone:api-itemsadder:4.0.10" // Items Adder API
     implementation "com.google.code.gson:gson:2.10.1" // JSON parsing
     implementation "org.bstats:bstats-bukkit:3.0.2" // Plugin stats
     implementation "com.github.retrooper:packetevents-spigot:2.10.0" // Packets

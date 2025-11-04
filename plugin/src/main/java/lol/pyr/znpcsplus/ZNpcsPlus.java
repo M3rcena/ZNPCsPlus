@@ -51,6 +51,8 @@ import lol.pyr.znpcsplus.user.ClientPacketListener;
 import lol.pyr.znpcsplus.user.UserListener;
 import lol.pyr.znpcsplus.user.UserManager;
 import lol.pyr.znpcsplus.util.*;
+import lol.pyr.znpcsplus.util.ItemsAdderIntegration;
+import lol.pyr.znpcsplus.util.ItemsAdderListener;
 import net.kyori.adventure.platform.bukkit.BukkitAudiences;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -85,6 +87,7 @@ public class ZNpcsPlus {
     private final ConfigManager configManager;
     private final MojangSkinCache skinCache;
     private final EntityPropertyRegistryImpl propertyRegistry;
+    private NpcRegistryImpl npcRegistry;
 
     public ZNpcsPlus(ZNpcsPlusBootstrap bootstrap) {
         this.bootstrap = bootstrap;
@@ -109,8 +112,10 @@ public class ZNpcsPlus {
         getDataFolder().mkdirs();
 
         log(ChatColor.YELLOW + "  ___       __   __  __");
-        log(ChatColor.YELLOW + "   _/ |\\ | |__) |   (__` " + ChatColor.GOLD + "__|__   " + ChatColor.YELLOW + getDescription().getName() + " " + ChatColor.GOLD + "v" + getDescription().getVersion());
-        log(ChatColor.YELLOW + "  /__ | \\| |    |__ .__) " + ChatColor.GOLD + "  |     " + ChatColor.GRAY + "Maintained with " + ChatColor.RED + "\u2764 " + ChatColor.GRAY + " by Pyr#6969");
+        log(ChatColor.YELLOW + "   _/ |\\ | |__) |   (__` " + ChatColor.GOLD + "__|__   " + ChatColor.YELLOW
+                + getDescription().getName() + " " + ChatColor.GOLD + "v" + getDescription().getVersion());
+        log(ChatColor.YELLOW + "  /__ | \\| |    |__ .__) " + ChatColor.GOLD + "  |     " + ChatColor.GRAY
+                + "Maintained with " + ChatColor.RED + "\u2764 " + ChatColor.GRAY + " by Pyr#6969");
         log("");
 
         PluginManager pluginManager = Bukkit.getPluginManager();
@@ -128,7 +133,6 @@ public class ZNpcsPlus {
         TaskScheduler scheduler = FoliaUtil.isFolia() ? new FoliaScheduler(bootstrap) : new SpigotScheduler(bootstrap);
         shutdownTasks.add(scheduler::cancelAll);
 
-
         PacketFactory packetFactory = setupPacketFactory(scheduler, propertyRegistry, configManager);
         propertyRegistry.registerTypes(packetFactory, textSerializer, scheduler);
 
@@ -136,9 +140,11 @@ public class ZNpcsPlus {
         ActionRegistryImpl actionRegistry = new ActionRegistryImpl();
         ActionFactoryImpl actionFactory = new ActionFactoryImpl(scheduler, adventure, textSerializer, bungeeConnector);
         NpcTypeRegistryImpl typeRegistry = new NpcTypeRegistryImpl();
-        NpcSerializerRegistryImpl serializerRegistry = new NpcSerializerRegistryImpl(packetFactory, configManager, actionRegistry, typeRegistry, propertyRegistry, textSerializer);
+        NpcSerializerRegistryImpl serializerRegistry = new NpcSerializerRegistryImpl(packetFactory, configManager,
+                actionRegistry, typeRegistry, propertyRegistry, textSerializer);
         NpcRegistryImpl npcRegistry = new NpcRegistryImpl(configManager, this, packetFactory, actionRegistry,
                 scheduler, typeRegistry, propertyRegistry, serializerRegistry, textSerializer);
+        this.npcRegistry = npcRegistry;
         shutdownTasks.add(npcRegistry::unload);
 
         UserManager userManager = new UserManager();
@@ -155,10 +161,26 @@ public class ZNpcsPlus {
 
         typeRegistry.registerDefault(packetEvents, propertyRegistry);
         actionRegistry.registerTypes(scheduler, adventure, textSerializer, bungeeConnector);
-        packetEvents.getEventManager().registerListener(new InteractionPacketListener(userManager, npcRegistry, typeRegistry, scheduler), PacketListenerPriority.MONITOR);
-        packetEvents.getEventManager().registerListener(new ClientPacketListener(configManager), PacketListenerPriority.LOWEST);
+        packetEvents.getEventManager().registerListener(
+                new InteractionPacketListener(userManager, npcRegistry, typeRegistry, scheduler),
+                PacketListenerPriority.MONITOR);
+        packetEvents.getEventManager().registerListener(new ClientPacketListener(configManager),
+                PacketListenerPriority.LOWEST);
         new Metrics(bootstrap, 18244);
         pluginManager.registerEvents(new UserListener(userManager), bootstrap);
+        if (ItemsAdderIntegration.isAvailable()) {
+            pluginManager.registerEvents(new ItemsAdderListener(bootstrap), bootstrap);
+            log(ChatColor.GREEN + " * Items Adder integration enabled!");
+
+            scheduler.runLaterAsync(() -> {
+                if (ItemsAdderIntegration.isAvailable()) {
+                    try {
+                        dev.lone.itemsadder.api.CustomStack.isInRegistry("test");
+                    } catch (Exception ignored) {
+                    }
+                }
+            }, 5L);
+        }
 
         registerCommands(npcRegistry, skinCache, adventure, actionRegistry,
                 typeRegistry, propertyRegistry, importerRegistry, configManager, packetFactory, serializerRegistry);
@@ -167,7 +189,8 @@ public class ZNpcsPlus {
         if (configManager.getConfig().checkForUpdates()) {
             UpdateChecker updateChecker = new UpdateChecker(getDescription());
             scheduler.runDelayedTimerAsync(updateChecker, 5L, 6000L);
-            pluginManager.registerEvents(new UpdateNotificationListener(this, adventure, updateChecker, scheduler), bootstrap);
+            pluginManager.registerEvents(new UpdateNotificationListener(this, adventure, updateChecker, scheduler),
+                    bootstrap);
         }
 
         scheduler.runDelayedTimerAsync(new NpcProcessorTask(npcRegistry, propertyRegistry, userManager), 60L, 3L);
@@ -177,7 +200,8 @@ public class ZNpcsPlus {
 
         log(ChatColor.WHITE + " * Loading data...");
         npcRegistry.reload();
-        if (configManager.getConfig().autoSaveEnabled()) shutdownTasks.add(npcRegistry::save);
+        if (configManager.getConfig().autoSaveEnabled())
+            shutdownTasks.add(npcRegistry::save);
 
         if (bootstrap.movedLegacy()) {
             log(ChatColor.WHITE + " * Converting legacy data...");
@@ -186,7 +210,8 @@ public class ZNpcsPlus {
                 npcRegistry.registerAll(entries);
             } catch (Exception exception) {
                 log(ChatColor.RED + " * Legacy data conversion failed! Check conversion.log for more info.");
-                try (PrintWriter writer = new PrintWriter(Files.newBufferedWriter(new File(getDataFolder(), "conversion.log").toPath(), StandardOpenOption.CREATE_NEW))) {
+                try (PrintWriter writer = new PrintWriter(Files.newBufferedWriter(
+                        new File(getDataFolder(), "conversion.log").toPath(), StandardOpenOption.CREATE_NEW))) {
                     exception.printStackTrace(writer);
                 } catch (IOException e) {
                     log(ChatColor.DARK_RED + " * Critical error! Writing to conversion.log failed.");
@@ -195,16 +220,19 @@ public class ZNpcsPlus {
             }
         }
 
-        NpcApiProvider.register(bootstrap, new ZNpcsPlusApi(npcRegistry, typeRegistry, propertyRegistry, actionRegistry, actionFactory, skinCache, serializerRegistry));
+        NpcApiProvider.register(bootstrap, new ZNpcsPlusApi(npcRegistry, typeRegistry, propertyRegistry, actionRegistry,
+                actionFactory, skinCache, serializerRegistry));
         log(ChatColor.WHITE + " * Loading complete! (" + (System.currentTimeMillis() - before) + "ms)");
         log("");
 
         if (configManager.getConfig().debugEnabled()) {
             World world = Bukkit.getWorld("world");
-            if (world == null) world = Bukkit.getWorlds().get(0);
+            if (world == null)
+                world = Bukkit.getWorlds().get(0);
             int i = 0;
             for (NpcTypeImpl type : typeRegistry.getAllImpl()) {
-                NpcEntryImpl entry = npcRegistry.create("debug_npc_" + i, world, type, new NpcLocation(i * 3, 200, 0, 0, 0));
+                NpcEntryImpl entry = npcRegistry.create("debug_npc_" + i, world, type,
+                        new NpcLocation(i * 3, 200, 0, 0, 0));
                 entry.setProcessed(true);
                 NpcImpl npc = entry.getNpc();
                 npc.getHologram().addTextLineComponent(Component.text("Hello, World!", TextColor.color(255, 0, 0)));
@@ -217,45 +245,57 @@ public class ZNpcsPlus {
 
     public void onDisable() {
         NpcApiProvider.unregister();
-        for (Runnable runnable : shutdownTasks) try {
-            runnable.run();
-        } catch (Throwable throwable) {
-            bootstrap.getLogger().severe("One of the registered shutdown tasks threw an exception:");
-            throwable.printStackTrace();
-        }
+        for (Runnable runnable : shutdownTasks)
+            try {
+                runnable.run();
+            } catch (Throwable throwable) {
+                bootstrap.getLogger().severe("One of the registered shutdown tasks threw an exception:");
+                throwable.printStackTrace();
+            }
         shutdownTasks.clear();
         PacketEvents.getAPI().terminate();
     }
 
-    private PacketFactory setupPacketFactory(TaskScheduler scheduler, EntityPropertyRegistryImpl propertyRegistry, ConfigManager configManager) {
+    private PacketFactory setupPacketFactory(TaskScheduler scheduler, EntityPropertyRegistryImpl propertyRegistry,
+            ConfigManager configManager) {
         HashMap<ServerVersion, LazyLoader<? extends PacketFactory>> versions = new HashMap<>();
-        versions.put(ServerVersion.V_1_8, LazyLoader.of(() -> new V1_8PacketFactory(scheduler, packetEvents, propertyRegistry, textSerializer, configManager)));
-        versions.put(ServerVersion.V_1_17, LazyLoader.of(() -> new V1_17PacketFactory(scheduler, packetEvents, propertyRegistry, textSerializer, configManager)));
-        versions.put(ServerVersion.V_1_19_3, LazyLoader.of(() -> new V1_19_3PacketFactory(scheduler, packetEvents, propertyRegistry, textSerializer, configManager)));
-        versions.put(ServerVersion.V_1_20_2, LazyLoader.of(() -> new V1_20_2PacketFactory(scheduler, packetEvents, propertyRegistry, textSerializer, configManager)));
-        versions.put(ServerVersion.V_1_21_3, LazyLoader.of(() -> new V1_21_3PacketFactory(scheduler, packetEvents, propertyRegistry, textSerializer, configManager)));
+        versions.put(ServerVersion.V_1_8, LazyLoader.of(
+                () -> new V1_8PacketFactory(scheduler, packetEvents, propertyRegistry, textSerializer, configManager)));
+        versions.put(ServerVersion.V_1_17, LazyLoader.of(() -> new V1_17PacketFactory(scheduler, packetEvents,
+                propertyRegistry, textSerializer, configManager)));
+        versions.put(ServerVersion.V_1_19_3, LazyLoader.of(() -> new V1_19_3PacketFactory(scheduler, packetEvents,
+                propertyRegistry, textSerializer, configManager)));
+        versions.put(ServerVersion.V_1_20_2, LazyLoader.of(() -> new V1_20_2PacketFactory(scheduler, packetEvents,
+                propertyRegistry, textSerializer, configManager)));
+        versions.put(ServerVersion.V_1_21_3, LazyLoader.of(() -> new V1_21_3PacketFactory(scheduler, packetEvents,
+                propertyRegistry, textSerializer, configManager)));
 
         ServerVersion version = packetEvents.getServerManager().getVersion();
-        if (versions.containsKey(version)) return versions.get(version).get();
+        if (versions.containsKey(version))
+            return versions.get(version).get();
         for (ServerVersion v : ServerVersion.reversedValues()) {
-            if (v.isNewerThan(version)) continue;
-            if (!versions.containsKey(v)) continue;
+            if (v.isNewerThan(version))
+                continue;
+            if (!versions.containsKey(v))
+                continue;
             return versions.get(v).get();
         }
         throw new RuntimeException("Unsupported version!");
     }
 
     private void registerCommands(NpcRegistryImpl npcRegistry, MojangSkinCache skinCache, BukkitAudiences adventure,
-                                  ActionRegistryImpl actionRegistry, NpcTypeRegistryImpl typeRegistry,
-                                  EntityPropertyRegistryImpl propertyRegistry, DataImporterRegistry importerRegistry,
-                                  ConfigManager configManager, PacketFactory packetFactory, NpcSerializerRegistryImpl serializerRegistry) {
+            ActionRegistryImpl actionRegistry, NpcTypeRegistryImpl typeRegistry,
+            EntityPropertyRegistryImpl propertyRegistry, DataImporterRegistry importerRegistry,
+            ConfigManager configManager, PacketFactory packetFactory, NpcSerializerRegistryImpl serializerRegistry) {
 
-        Message<CommandContext> incorrectUsageMessage = context -> context.send(Component.text("Incorrect usage: /" + context.getUsage(), NamedTextColor.RED));
+        Message<CommandContext> incorrectUsageMessage = context -> context
+                .send(Component.text("Incorrect usage: /" + context.getUsage(), NamedTextColor.RED));
         CommandManager manager = new CommandManager(bootstrap, adventure, incorrectUsageMessage);
 
         manager.registerParser(NpcTypeImpl.class, new NpcTypeParser(incorrectUsageMessage, typeRegistry));
         manager.registerParser(NpcEntryImpl.class, new NpcEntryParser(npcRegistry, incorrectUsageMessage));
-        manager.registerParser(EntityPropertyImpl.class, new EntityPropertyParser(incorrectUsageMessage, propertyRegistry));
+        manager.registerParser(EntityPropertyImpl.class,
+                new EntityPropertyParser(incorrectUsageMessage, propertyRegistry));
         manager.registerParser(Integer.class, new IntegerParser(incorrectUsageMessage));
         manager.registerParser(Double.class, new DoubleParser(incorrectUsageMessage));
         manager.registerParser(Float.class, new FloatParser(incorrectUsageMessage));
@@ -325,7 +365,10 @@ public class ZNpcsPlus {
                         .addSubcommand("save", new SaveAllCommand(npcRegistry))
                         .addSubcommand("reload", new LoadAllCommand(npcRegistry))
                         .addSubcommand("import", new ImportCommand(npcRegistry, importerRegistry))
-                        .addSubcommand("migrate", new MigrateCommand(configManager, this, packetFactory, actionRegistry, typeRegistry, propertyRegistry, textSerializer, npcRegistry.getStorage(), configManager.getConfig().storageType(), npcRegistry, serializerRegistry)))
+                        .addSubcommand("migrate",
+                                new MigrateCommand(configManager, this, packetFactory, actionRegistry, typeRegistry,
+                                        propertyRegistry, textSerializer, npcRegistry.getStorage(),
+                                        configManager.getConfig().storageType(), npcRegistry, serializerRegistry)))
                 .addSubcommand("holo", new MultiCommand(bootstrap.loadHelpMessage("holo"))
                         .addSubcommand("add", new HoloAddCommand(npcRegistry))
                         .addSubcommand("additem", new HoloAddItemCommand(npcRegistry))
@@ -343,12 +386,16 @@ public class ZNpcsPlus {
                         .addSubcommand("delete", new ActionDeleteCommand(npcRegistry))
                         .addSubcommand("edit", new ActionEditCommand(npcRegistry, actionRegistry))
                         .addSubcommand("list", new ActionListCommand(npcRegistry)))
-                .addSubcommand("version", new VersionCommand(this))
-        );
+                .addSubcommand("version", new VersionCommand(this)));
     }
 
-    private <T extends Enum<T>> void registerEnumParser(CommandManager manager, Class<T> clazz, Message<CommandContext> message) {
+    private <T extends Enum<T>> void registerEnumParser(CommandManager manager, Class<T> clazz,
+            Message<CommandContext> message) {
         manager.registerParser(clazz, new EnumParser<>(clazz, message));
+    }
+
+    public NpcRegistryImpl getNpcRegistry() {
+        return npcRegistry;
     }
 
     public File getDataFolder() {
