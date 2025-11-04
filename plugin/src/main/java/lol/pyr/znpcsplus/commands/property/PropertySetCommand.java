@@ -19,7 +19,6 @@ import lol.pyr.znpcsplus.util.*;
 import lol.pyr.znpcsplus.util.ItemsAdderIntegration;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import com.github.retrooper.packetevents.protocol.item.ItemStack;
 import org.bukkit.Material;
@@ -59,56 +58,38 @@ public class PropertySetCommand implements CommandHandler {
             org.bukkit.inventory.ItemStack bukkitStack = null;
 
             if (context.argSize() > 0) {
-                try {
-                    String itemIdArg = context.popString();
-                    if (ItemsAdderIntegration.isItemsAdderItemId(itemIdArg)) {
-                        bukkitStack = ItemsAdderIntegration.getItemsAdderItem(itemIdArg);
-                        if (bukkitStack != null) {
-                            value = SpigotConversionUtil.fromBukkitItemStack(bukkitStack);
-                            valueName = itemIdArg;
-                        } else {
-                            Player player = context.ensureSenderIsPlayer();
-                            org.bukkit.inventory.ItemStack heldItem = player.getInventory().getItemInHand();
-                            if (heldItem != null && heldItem.getAmount() > 0) {
-                                String heldItemId = ItemsAdderIntegration.getItemsAdderItemId(heldItem);
-                                if (heldItemId != null) {
-                                    context.halt(Component.text(
-                                            "Items Adder item '" + itemIdArg
-                                                    + "' not found! The item you're holding uses ID: " + heldItemId +
-                                                    "\nTry: /npc property set " + entry.getId() + " "
-                                                    + property.getName() + " " + heldItemId,
-                                            NamedTextColor.RED));
-                                } else {
-                                    context.halt(Component.text(
-                                            "Items Adder item '" + itemIdArg
-                                                    + "' not found! Use /ia list to see available items.",
-                                            NamedTextColor.RED));
-                                }
-                            } else {
-                                context.halt(Component.text(
-                                        "Items Adder item '" + itemIdArg
-                                                + "' not found! Hold an Items Adder item and run this command without the ID to see the correct format.",
-                                        NamedTextColor.RED));
-                            }
-                            return;
-                        }
+                String itemIdArg = context.popString();
+                
+                if (ItemsAdderIntegration.isItemsAdderItemId(itemIdArg)) {
+                    bukkitStack = ItemsAdderIntegration.getItemsAdderItem(itemIdArg);
+                    if (bukkitStack != null) {
+                        value = SpigotConversionUtil.fromBukkitItemStack(bukkitStack);
+                        valueName = itemIdArg;
+                    } else {
+                        context.halt(Component.text(
+                                "No Items Adder item found with ID: " + itemIdArg,
+                                NamedTextColor.RED));
+                        return;
                     }
-                } catch (Exception e) {
-                    Bukkit.getLogger().warning(
-                            "[ZNPCsPlus] PropertySetCommand: Exception while processing argument: " + e.getMessage());
-                    e.printStackTrace();
+                } else {
+                    context.halt(Component.text(
+                            "Invalid Items Adder item ID format. Expected format: namespace:item_id",
+                            NamedTextColor.RED));
+                    return;
                 }
-            }
-            if (value == null) {
+            } else {
                 Player player = context.ensureSenderIsPlayer();
                 bukkitStack = player.getInventory().getItemInHand();
+                
                 if (bukkitStack == null || bukkitStack.getAmount() == 0) {
-                    value = null;
-                    valueName = "EMPTY";
-                } else {
-                    value = SpigotConversionUtil.fromBukkitItemStack(bukkitStack);
-                    valueName = bukkitStack.toString();
+                    context.halt(Component.text(
+                            "You must be holding an item!",
+                            NamedTextColor.RED));
+                    return;
                 }
+                
+                value = SpigotConversionUtil.fromBukkitItemStack(bukkitStack);
+                valueName = bukkitStack.toString();
             }
         } else if (type == NamedColor.class && context.argSize() < 1 && npc.getProperty(property) != null) {
             value = null;
