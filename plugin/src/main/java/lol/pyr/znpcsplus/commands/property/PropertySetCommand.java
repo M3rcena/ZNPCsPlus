@@ -17,6 +17,7 @@ import lol.pyr.znpcsplus.npc.NpcImpl;
 import lol.pyr.znpcsplus.npc.NpcRegistryImpl;
 import lol.pyr.znpcsplus.util.*;
 import lol.pyr.znpcsplus.util.ItemsAdderIntegration;
+import lol.pyr.znpcsplus.util.ItemStringParser;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Color;
@@ -72,10 +73,16 @@ public class PropertySetCommand implements CommandHandler {
                         return;
                     }
                 } else {
-                    context.halt(Component.text(
-                            "Invalid Items Adder item ID format. Expected format: namespace:item_id",
-                            NamedTextColor.RED));
-                    return;
+                    com.github.retrooper.packetevents.protocol.item.ItemStack parsedStack = ItemStringParser.parseItemString(itemIdArg);
+                    if (parsedStack != null) {
+                        value = parsedStack;
+                        valueName = itemIdArg;
+                    } else {
+                        context.halt(Component.text(
+                                "No item found with ID: " + itemIdArg + ". Expected format: namespace:item_id or minecraft:item_name[nbt_data]",
+                                NamedTextColor.RED));
+                        return;
+                    }
                 }
             } else {
                 Player player = context.ensureSenderIsPlayer();
